@@ -3,7 +3,6 @@ package me.arasple.mc.trchat.module.display.function
 import me.arasple.mc.trchat.api.event.TrChatReloadEvent
 import me.arasple.mc.trchat.module.internal.script.Reaction
 import org.bukkit.entity.Player
-import taboolib.common.io.getInstance
 import taboolib.common.io.runningClassesWithoutLibrary
 import taboolib.common.platform.ProxyCommandSender
 import taboolib.common.platform.ProxyPlayer
@@ -39,8 +38,8 @@ abstract class Function(val id: String) {
         fun reload(customFunctions: List<CustomFunction>) {
             functions.clear()
             functions.addAll(runningClassesWithoutLibrary
-                .filter { it.isAnnotationPresent(StandardFunction::class.java) }
-                .mapNotNull { it.getInstance()?.get() as? Function }
+                .filter { it.hasAnnotation(StandardFunction::class.java) }
+                .mapNotNull { it.getInstance() as? Function }
             )
             functions.addAll(customFunctions)
             TrChatReloadEvent.Function(functions).call()
@@ -78,33 +77,31 @@ abstract class Function(val id: String) {
         }
 
         fun ComponentText.applyStyle(type: TypeJson, part: VariableReader.Part, i: Int, sender: ProxyPlayer, vararg args: Any): ComponentText {
-            if (part.isVariable) {
-                val extra = type.jsonArgs.getOrNull(i)
-                if (extra != null) {
-                    if (extra.containsKey("hover")) {
-                        hoverText(extra["hover"].toString().translate(sender).replaceWithOrder(*args))
-                    }
-                    if (extra.containsKey("command")) {
-                        clickRunCommand(extra["command"].toString().translate(sender).replaceWithOrder(*args))
-                    }
-                    if (extra.containsKey("suggest")) {
-                        clickSuggestCommand(extra["suggest"].toString().translate(sender).replaceWithOrder(*args))
-                    }
-                    if (extra.containsKey("insertion")) {
-                        clickInsertText(extra["insertion"].toString().translate(sender).replaceWithOrder(*args))
-                    }
-                    if (extra.containsKey("copy")) {
-                        clickCopyToClipboard(extra["copy"].toString().translate(sender).replaceWithOrder(*args))
-                    }
-                    if (extra.containsKey("file")) {
-                        clickOpenFile(extra["file"].toString().translate(sender).replaceWithOrder(*args))
-                    }
-                    if (extra.containsKey("url")) {
-                        clickOpenURL(extra["url"].toString().translate(sender).replaceWithOrder(*args))
-                    }
-                    if (extra.containsKey("font")) {
-                        font(extra["font"].toString().translate(sender).replaceWithOrder(*args))
-                    }
+            val extra = type.jsonArgs.getOrNull(i)
+            if (extra != null) {
+                if (extra.containsKey("hover")) {
+                    hoverText(extra["hover"].toString().translate(sender).replaceWithOrder(*args))
+                }
+                if (extra.containsKey("command")) {
+                    clickRunCommand(extra["command"].toString().translate(sender).replaceWithOrder(*args))
+                }
+                if (extra.containsKey("suggest")) {
+                    clickSuggestCommand(extra["suggest"].toString().translate(sender).replaceWithOrder(*args))
+                }
+                if (extra.containsKey("insertion")) {
+                    clickInsertText(extra["insertion"].toString().translate(sender).replaceWithOrder(*args))
+                }
+                if (extra.containsKey("copy")) {
+                    clickCopyToClipboard(extra["copy"].toString().translate(sender).replaceWithOrder(*args))
+                }
+                if (extra.containsKey("file")) {
+                    clickOpenFile(extra["file"].toString().translate(sender).replaceWithOrder(*args))
+                }
+                if (extra.containsKey("url")) {
+                    clickOpenURL(extra["url"].toString().translate(sender).replaceWithOrder(*args))
+                }
+                if (extra.containsKey("font")) {
+                    font(extra["font"].toString().translate(sender).replaceWithOrder(*args))
                 }
             }
             return this

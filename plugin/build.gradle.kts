@@ -16,9 +16,11 @@ taboolib {
             name("ItemsAdder").with("bukkit").optional(true)
             name("Nova").with("bukkit").optional(true)
             name("Multiverse-Core").with("bukkit").loadafter(true)
+            name("Geyser-Spigot").with("bukkit").loadafter(true)
         }
     }
     relocate("com.eatthepath.uuid.", "${rootProject.group}.library.uuid.")
+//    relocate("com.electronwill.nightconfig", "com.electronwill.nightconfig_3_6_7")
 }
 
 dependencies {
@@ -28,13 +30,13 @@ dependencies {
 tasks {
     jar {
         // 构件名
-        archiveFileName.set("${rootProject.name}-${archiveFileName.get().substringAfter('-')}")
+        archiveBaseName.set(rootProject.name)
         // 打包子项目源代码
         rootProject.subprojects.forEach { from(it.sourceSets["main"].output) }
     }
     sourcesJar {
         // 构件名
-        archiveFileName.set("${rootProject.name}-${archiveFileName.get().substringAfter('-')}")
+        archiveBaseName.set(rootProject.name)
         // 打包子项目源代码
         rootProject.subprojects.forEach { from(it.sourceSets["main"].allSource) }
     }

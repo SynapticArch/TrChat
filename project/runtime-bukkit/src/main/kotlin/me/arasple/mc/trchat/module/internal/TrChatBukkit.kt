@@ -2,6 +2,7 @@ package me.arasple.mc.trchat.module.internal
 
 import me.arasple.mc.trchat.TrChat
 import me.arasple.mc.trchat.api.impl.BukkitProxyManager
+import me.arasple.mc.trchat.api.nms.NMS
 import me.arasple.mc.trchat.module.conf.file.Filters
 import me.arasple.mc.trchat.module.conf.file.Functions
 import me.arasple.mc.trchat.module.conf.file.Settings
@@ -16,7 +17,7 @@ import taboolib.common.platform.*
 import taboolib.common.platform.function.console
 import taboolib.common.platform.function.pluginVersion
 import taboolib.module.lang.sendLang
-import taboolib.module.nms.MinecraftVersion.majorLegacy
+import taboolib.module.nms.MinecraftVersion.versionId
 
 @PlatformSide(Platform.BUKKIT)
 object TrChatBukkit : Plugin() {
@@ -26,16 +27,24 @@ object TrChatBukkit : Plugin() {
 
     var isGlobalMuting = false
 
-    @Awake(LifeCycle.CONST)
     internal fun detectPaperEnv() {
         try {
             // Paper 1.16.5+
             Class.forName("com.destroystokyo.paper.PaperConfig")
-            if (majorLegacy >= 11604) {
+            if (versionId >= 11604) {
                 isPaperEnv = true
             }
         } catch (_: ClassNotFoundException) {
         }
+    }
+
+    @Awake(LifeCycle.CONST)
+    internal fun onConst() {
+//        System.setProperty("taboolib.dev", "true")
+        detectPaperEnv()
+//        registerLifeCycleTask(LifeCycle.INIT, 0) {
+//            YamlUpdater.update("settings.yml", updateExists = false)
+//        }
     }
 
     override fun onLoad() {
@@ -43,6 +52,12 @@ object TrChatBukkit : Plugin() {
     }
 
     override fun onEnable() {
+//        if (!Settings.usePackets
+//            || Folia.isFolia
+//            || Bukkit.getPluginManager().isPluginEnabled("Geyser-Spigot")
+//            || versionId >= 12005
+//            ) disablePacketListener()
+        NMS.instance
         BukkitProxyManager.processor
         HookPlugin.printInfo()
         reload(console())

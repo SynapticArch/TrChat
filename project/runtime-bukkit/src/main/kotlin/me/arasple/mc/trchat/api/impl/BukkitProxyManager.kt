@@ -4,10 +4,12 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder
 import me.arasple.mc.trchat.api.ClientMessageManager
 import me.arasple.mc.trchat.api.ProxyMode
 import me.arasple.mc.trchat.module.conf.file.Settings
+import me.arasple.mc.trchat.module.internal.data.PlayerData
 import me.arasple.mc.trchat.module.internal.proxy.BukkitProxyProcessor
 import me.arasple.mc.trchat.module.internal.proxy.redis.RedisManager
 import me.arasple.mc.trchat.util.parseString
 import org.bukkit.Bukkit
+import org.bukkit.ChatColor
 import org.bukkit.plugin.messaging.PluginMessageRecipient
 import org.spigotmc.SpigotConfig
 import taboolib.common.platform.Platform
@@ -38,12 +40,14 @@ object BukkitProxyManager : ClientMessageManager {
     override var port = 25565
 
     var allPlayerNames = mapOf<String, String?>()
-        get() = if (mode != ProxyMode.REDIS) {
-            field
-        } else {
+        get() = if (mode == ProxyMode.NONE) {
+            onlinePlayers.associate { it.name to ChatColor.stripColor(it.displayName) }
+        } else if (mode == ProxyMode.REDIS) {
             val result = mutableMapOf<String, String?>()
             (processor as BukkitProxyProcessor.RedisSide).allNames.values.forEach { result += it }
             result
+        } else {
+            field
         }
 
     init {
@@ -57,7 +61,7 @@ object BukkitProxyManager : ClientMessageManager {
 
     override val executor: ExecutorService by unsafeLazy {
         val factory = ThreadFactoryBuilder().setNameFormat("TrChat PluginMessage Processing Thread #%d").build()
-        Executors.newFixedThreadPool(4, factory)
+        Executors.newFixedThreadPool(8, factory)
     }
 
     override val mode: ProxyMode by unsafeLazy {
@@ -108,22 +112,29 @@ object BukkitProxyManager : ClientMessageManager {
     }
 
     override fun getPlayerNames(): Map<String, String?> {
-        if (mode == ProxyMode.NONE) {
-            return onlinePlayers.associate { it.name to it.displayName }
-        }
         return allPlayerNames
+    }
+
+    fun getPlayerNamesMerged(): Set<String> {
+        return allPlayerNames.let { it.keys + it.values.filterNotNull() }
     }
 
     override fun getExactName(name: String): String? {
         var player = Bukkit.getPlayerExact(name)
         if (player == null) {
-            player = Bukkit.getOnlinePlayers().firstOrNull { it.displayName == name }
+            player = Bukkit.getOnlinePlayers().firstOrNull { ChatColor.stripColor(it.displayName) == name }
         }
         return if (player != null && player.isOnline) {
             player.name
         } else {
-            getPlayerNames().keys.firstOrNull { it.equals(name, ignoreCase = true) }
+            getPlayerNames().entries.firstOrNull {
+                it.key.equals(name, ignoreCase = true) || it.value?.equals(name, ignoreCase = true) == true
+            }?.key
         }
+    }
+
+    override fun isPlayerOnline(name: String): Boolean {
+        return getExactName(name) != null
     }
 
     override fun sendMessage(recipient: Any?, data: Array<String>): Future<*> {
@@ -139,12 +150,12 @@ object BukkitProxyManager : ClientMessageManager {
         }
     }
 
-    fun sendBroadcastRaw(recipient: Any?, uuid: UUID, component: ComponentText, joinPerm: String, doubleTransfer: Boolean, ports: List<Int>) {
+    fun sendBroadcastRaw(recipient: Any?, uuid: UUID, component: ComponentText, listenPerm: String, doubleTransfer: Boolean, ports: List<Int>) {
         sendMessage(recipient, arrayOf(
             "BroadcastRaw",
             uuid.parseString(),
             component.toRawMessage(),
-            joinPerm,
+            listenPerm,
             doubleTransfer.toString(),
             ports.joinToString(";"))
         )
@@ -157,7 +168,7 @@ object BukkitProxyManager : ClientMessageManager {
     fun updateNames() {
         sendMessage(onlinePlayers.firstOrNull(), arrayOf(
             "UpdateNames",
-            onlinePlayers.joinToString(",") { it.name + "-" + it.displayName },
+            onlinePlayers.filter { it.name !in PlayerData.vanishing }.joinToString(",") { it.name + "-" + ChatColor.stripColor(it.displayName) },
             port.toString()
         ))
     }

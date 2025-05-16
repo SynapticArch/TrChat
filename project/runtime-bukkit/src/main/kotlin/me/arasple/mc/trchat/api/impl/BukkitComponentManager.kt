@@ -1,5 +1,7 @@
 package me.arasple.mc.trchat.api.impl
 
+import com.google.common.cache.Cache
+import com.google.common.cache.CacheBuilder
 import me.arasple.mc.trchat.TrChat
 import me.arasple.mc.trchat.api.ComponentManager
 import me.arasple.mc.trchat.api.event.TrChatReceiveEvent
@@ -30,6 +32,10 @@ object BukkitComponentManager : ComponentManager {
 
     @ConfigNode("Enable.Chat", "filter.yml")
     var isFilterEnabled = true
+
+    private val filteredCache: Cache<ComponentText, ComponentText> = CacheBuilder.newBuilder()
+        .maximumSize(10)
+        .build()
 
     init {
         PlatformFactory.registerAPI<ComponentManager>(this)
@@ -64,14 +70,16 @@ object BukkitComponentManager : ComponentManager {
             event.message
         }
         if (commandSender is Player) {
-            NMS.instance.sendMessage(commandSender, newComponent, event.sender)
+            NMS.instance.sendMessage(commandSender, newComponent, event.sender, Settings.usePackets)
         } else {
             newComponent.sendTo(adaptCommandSender(commandSender))
         }
     }
 
     override fun filterComponent(component: ComponentText, maxLength: Int): ComponentText {
-        return validateComponent(DefaultComponent(listOf(filterComponent(component.toSpigotObject()))), maxLength)
+        return filteredCache.get(component) {
+            validateComponent(DefaultComponent(listOf(filterComponent(component.toSpigotObject()))), maxLength)
+        }
     }
 
     override fun validateComponent(component: ComponentText, maxLength: Int): ComponentText {

@@ -5,7 +5,7 @@ import taboolib.common.platform.Platform
 import taboolib.common.platform.PlatformSide
 import taboolib.common.platform.event.SubscribeEvent
 import taboolib.module.configuration.ConfigNode
-import taboolib.module.nms.MinecraftVersion.majorLegacy
+import taboolib.module.nms.MinecraftVersion.versionId
 import taboolib.module.nms.PacketReceiveEvent
 import taboolib.module.nms.PacketSendEvent
 
@@ -22,20 +22,22 @@ object ListenerPackets {
 
     /**
      * 去除进入时右上角提示/禁止聊天举报
+     * TODO Support 1.21
      */
     @SubscribeEvent
     fun secure(e: PacketSendEvent) {
-        if (majorLegacy < 11902) return
+        if (!cheatClientSecureChat) return
+        if (versionId < 11902) return
         when (e.packet.name) {
             "ClientboundServerDataPacket" -> {
-                if (cheatClientSecureChat) e.packet.write("enforcesSecureChat", true)
+                if (versionId < 12005) e.packet.write("enforcesSecureChat", true)
             }
-            "ClientboundPlayerChatHeaderPacket" -> e.isCancelled = true
         }
     }
 
     @SubscribeEvent
     fun secure(e: PacketReceiveEvent) {
+        if (versionId >= 12005) return
         if (e.packet.name == "ServerboundChatSessionUpdatePacket") {
             e.isCancelled = true
         }
@@ -46,15 +48,16 @@ object ListenerPackets {
      */
     @SubscribeEvent
     fun record(e: PacketSendEvent) {
+        if (versionId >= 12005) return
         val session = ChatSession.sessions[e.player.uniqueId] ?: return
         when (e.packet.name) {
             "ClientboundSystemChatPacket" -> {
                 session.addMessage(e.packet)
             }
             "PacketPlayOutChat" -> {
-                val type = if (majorLegacy >= 11700) {
+                val type = if (versionId >= 11700) {
                     e.packet.read<Byte>("type/index")!!
-                } else if (majorLegacy >= 11200) {
+                } else if (versionId >= 11200) {
                     e.packet.read<Byte>("b/d")!!
                 } else {
                     e.packet.read<Byte>("b")

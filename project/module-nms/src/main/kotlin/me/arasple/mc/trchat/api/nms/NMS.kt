@@ -2,7 +2,10 @@ package me.arasple.mc.trchat.api.nms
 
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
+import taboolib.common.util.unsafeLazy
 import taboolib.module.chat.ComponentText
+import taboolib.module.nms.MinecraftLanguage
+import taboolib.module.nms.MinecraftVersion
 import taboolib.module.nms.nmsProxy
 import java.util.*
 
@@ -18,21 +21,23 @@ abstract class NMS {
      */
     abstract fun rawMessageFromCraftChatMessage(component: Any): String
 
-    abstract fun sendMessage(receiver: Player, component: ComponentText, sender: UUID?)
+    abstract fun sendMessage(receiver: Player, component: ComponentText, sender: UUID?, usePacket: Boolean = true)
+
+    abstract fun hoverItem(component: ComponentText, itemStack: ItemStack): ComponentText
 
     abstract fun optimizeNBT(itemStack: ItemStack, nbtWhitelist: Array<String> = whitelistTags): ItemStack
 
-    abstract fun addCustomChatCompletions(player: Player, entries: List<String>)
-
-    abstract fun removeCustomChatCompletions(player: Player, entries: List<String>)
-
-    abstract fun setCustomChatCompletions(player: Player, entries: List<String>)
+    abstract fun getLocaleKey(itemStack: ItemStack): MinecraftLanguage.LanguageKey
 
     companion object {
 
         @JvmStatic
-        val instance = nmsProxy<NMS>()
+        val instance by unsafeLazy {
+            if (MinecraftVersion.versionId < 12005) nmsProxy<NMS>()
+            else nmsProxy<NMS>("me.arasple.mc.trchat.api.nms.NMSImpl12005")
+        }
 
+        // 1.20.4-
         val whitelistTags = arrayOf(
             // 附魔
             "ench",

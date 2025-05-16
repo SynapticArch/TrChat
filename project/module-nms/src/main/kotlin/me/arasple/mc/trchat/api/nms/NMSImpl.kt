@@ -1,16 +1,21 @@
 package me.arasple.mc.trchat.api.nms
 
+import me.arasple.mc.trchat.util.ServerUtil
 import me.arasple.mc.trchat.util.reportOnce
-import net.minecraft.network.protocol.game.ClientboundCustomChatCompletionsPacket
 import net.minecraft.server.v1_12_R1.ChatMessageType
 import net.minecraft.server.v1_12_R1.PacketPlayOutChat
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
+import taboolib.common.platform.function.adaptPlayer
 import taboolib.library.reflex.Reflex.Companion.invokeConstructor
 import taboolib.module.chat.ComponentText
+import taboolib.module.nms.MinecraftLanguage
 import taboolib.module.nms.MinecraftVersion.isUniversal
-import taboolib.module.nms.MinecraftVersion.majorLegacy
+import taboolib.module.nms.MinecraftVersion.versionId
+import taboolib.module.nms.NMSItemTag
+import taboolib.module.nms.nmsProxy
 import taboolib.module.nms.sendPacket
+import taboolib.platform.Folia
 import taboolib.platform.util.isAir
 import java.util.*
 
@@ -30,9 +35,9 @@ class NMSImpl : NMS() {
 
     override fun craftChatMessageFromComponent(component: ComponentText): Any {
         return try {
-            if (majorLegacy >= 11604) {
+            if (versionId >= 11604) {
                 CraftChatMessage19.fromJSON(component.toRawMessage())
-            } else if (majorLegacy >= 11600) {
+            } else if (versionId >= 11600) {
                 ChatSerializer16.a(component.toRawMessage())!!
             } else {
                 ChatSerializer12.a(component.toRawMessage())!!
@@ -44,7 +49,7 @@ class NMSImpl : NMS() {
 
     override fun rawMessageFromCraftChatMessage(component: Any): String {
         return try {
-            if (majorLegacy >= 11604) {
+            if (versionId >= 11604) {
                 CraftChatMessage19.toJSON(component as NMSIChatBaseComponent)
             } else {
                 ChatSerializer12.a(component as IChatBaseComponent12)!!
@@ -54,17 +59,21 @@ class NMSImpl : NMS() {
         }
     }
 
-    override fun sendMessage(receiver: Player, component: ComponentText, sender: UUID?) {
-        if (majorLegacy >= 11900) {
+    override fun sendMessage(receiver: Player, component: ComponentText, sender: UUID?, usePacket: Boolean) {
+        if (!usePacket || Folia.isFolia || ServerUtil.isModdedServer) {
+            component.sendTo(adaptPlayer(receiver))
+            return
+        }
+        if (versionId >= 11900) {
             val player = (receiver as CraftPlayer19).handle
             player.sendSystemMessage(craftChatMessageFromComponent(component) as NMSIChatBaseComponent)
-        } else if (majorLegacy >= 11600) {
+        } else if (versionId >= 11600) {
             receiver.sendPacket(PacketPlayOutChat::class.java.invokeConstructor(
                 craftChatMessageFromComponent(component),
                 ChatMessageType.CHAT,
                 sender
             ))
-        } else if (majorLegacy >= 11200) {
+        } else if (versionId >= 11200) {
             receiver.sendPacket(PacketPlayOutChat::class.java.invokeConstructor(
                 craftChatMessageFromComponent(component),
                 ChatMessageType.CHAT
@@ -75,6 +84,15 @@ class NMSImpl : NMS() {
                 0.toByte()
             ))
         }
+    }
+
+    override fun hoverItem(component: ComponentText, itemStack: ItemStack): ComponentText {
+        val nmsItem = CraftItemStack19.asNMSCopy(itemStack)
+        val nbtTag = NBTTagCompound19()
+        nmsItem.save(nbtTag)
+        val id = nbtTag.getString("id") ?: "minecraft:air"
+        val nbt = nbtTag.get("tag")?.toString() ?: "{}"
+        return component.hoverItem(id, nbt)
     }
 
     override fun optimizeNBT(itemStack: ItemStack, nbtWhitelist: Array<String>): ItemStack {
@@ -112,36 +130,9 @@ class NMSImpl : NMS() {
         return itemStack
     }
 
-    override fun addCustomChatCompletions(player: Player, entries: List<String>) {
-        if (majorLegacy < 11901) return
-        try {
-            player.sendPacket(ClientboundCustomChatCompletionsPacket::class.java.invokeConstructor(
-                ClientboundCustomChatCompletionsPacket.Action.ADD,
-                entries
-            ))
-        } catch (_: NoClassDefFoundError) {
-        }
-    }
-
-    override fun removeCustomChatCompletions(player: Player, entries: List<String>) {
-        if (majorLegacy < 11901) return
-        try {
-            player.sendPacket(ClientboundCustomChatCompletionsPacket::class.java.invokeConstructor(
-                ClientboundCustomChatCompletionsPacket.Action.REMOVE,
-                entries
-            ))
-        } catch (_: NoClassDefFoundError) {
-        }
-    }
-
-    override fun setCustomChatCompletions(player: Player, entries: List<String>) {
-        if (majorLegacy < 11901) return
-        try {
-            player.sendPacket(ClientboundCustomChatCompletionsPacket::class.java.invokeConstructor(
-                ClientboundCustomChatCompletionsPacket.Action.SET,
-                entries
-            ))
-        } catch (_: NoClassDefFoundError) {
-        }
+    override fun getLocaleKey(itemStack: ItemStack): MinecraftLanguage.LanguageKey {
+        val nmsItemStack = nmsProxy<NMSItemTag>().getNMSCopy(itemStack) as net.minecraft.server.v1_16_R3.ItemStack
+        val nmsItem = nmsItemStack.item
+        return MinecraftLanguage.LanguageKey(MinecraftLanguage.LanguageKey.Type.NORMAL, nmsItem.f(nmsItemStack))
     }
 }

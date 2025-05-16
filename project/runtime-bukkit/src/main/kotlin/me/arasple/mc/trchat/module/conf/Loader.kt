@@ -1,14 +1,13 @@
 package me.arasple.mc.trchat.module.conf
 
 import me.arasple.mc.trchat.api.event.TrChatReloadEvent
-import me.arasple.mc.trchat.api.impl.BukkitProxyManager
 import me.arasple.mc.trchat.module.conf.file.Functions
 import me.arasple.mc.trchat.module.display.channel.Channel
 import me.arasple.mc.trchat.module.display.channel.PrivateChannel
 import me.arasple.mc.trchat.module.display.channel.obj.ChannelBindings
 import me.arasple.mc.trchat.module.display.channel.obj.ChannelEvents
+import me.arasple.mc.trchat.module.display.channel.obj.ChannelRange
 import me.arasple.mc.trchat.module.display.channel.obj.ChannelSettings
-import me.arasple.mc.trchat.module.display.channel.obj.Range
 import me.arasple.mc.trchat.module.display.format.Format
 import me.arasple.mc.trchat.module.display.format.Group
 import me.arasple.mc.trchat.module.display.format.JsonComponent
@@ -32,11 +31,9 @@ import taboolib.common.util.asList
 import taboolib.common.util.orNull
 import taboolib.common.util.unsafeLazy
 import taboolib.common5.Coerce
-import taboolib.common5.FileWatcher
 import taboolib.library.configuration.ConfigurationSection
 import taboolib.module.configuration.util.getMap
 import taboolib.module.lang.sendLang
-import taboolib.platform.util.onlinePlayers
 import java.io.File
 import kotlin.system.measureTimeMillis
 
@@ -73,14 +70,13 @@ object Loader {
         Channel.channels.values.forEach { it.unregister() }
         Channel.channels.clear()
 
-        BukkitProxyManager.sendMessage(onlinePlayers.firstOrNull(), arrayOf("FetchProxyChannels"))
-
         filterChannelFiles(folder).forEach {
-            if (FileWatcher.INSTANCE.hasListener(it)) {
-                loadChannel(it)
-            } else {
-                FileWatcher.INSTANCE.addSimpleListener(it, { loadChannel(it) }, true)
-            }
+//            if (FileWatcher.INSTANCE.hasListener(it)) {
+//                loadChannel(it)
+//            } else {
+//                FileWatcher.INSTANCE.addSimpleListener(it, { loadChannel(it) }, true)
+//            }
+            loadChannel(it)
         }
 
         TrChatReloadEvent.Channel(Channel.channels).call()
@@ -105,12 +101,13 @@ object Loader {
 
         val settings = conf.getConfigurationSection("Options")!!.let { section ->
             val joinPermission = section.getString("Join-Permission", "")!!
+            val listenPermission = section.getString("Listen-Permission", joinPermission)!!
             val speakCondition = section.getString("Speak-Condition").toCondition()
-            val autoJoin = section.getBoolean("Auto-Join", true)
+            val alwaysListen = section.getBoolean("Always-Listen", section.getBoolean("Auto-Join", true))
             val isPrivate = section.getBoolean("Private", false)
             val range = section.getString("Target", "ALL")!!.uppercase().split(";").let {
                 val distance = it.getOrNull(1)?.toInt() ?: -1
-                Range(Range.Type.valueOf(it[0]), distance)
+                ChannelRange(ChannelRange.Type.valueOf(it[0]), distance)
             }
             val proxy = section.getBoolean("Proxy", false)
             val forceProxy = section.getBoolean("Force-Proxy", false)
@@ -122,7 +119,7 @@ object Loader {
             val receiveFromDiscord = section.getBoolean("Receive-From-Discord", true)
             val discordChannel = section.getString("Discord-Channel", "")!!
             ChannelSettings(
-                joinPermission, speakCondition, autoJoin, isPrivate,
+                joinPermission, listenPermission, speakCondition, alwaysListen, isPrivate,
                 range, proxy, forceProxy, doubleTransfer, ports, disabledFunctions, filterBeforeSending,
                 sendToDiscord, receiveFromDiscord, discordChannel
             )
@@ -147,7 +144,7 @@ object Loader {
                 val condition = map["condition"]?.toString()?.toCondition()
                 val priority = Coerce.asInteger(map["priority"]).orNull() ?: 100
                 val prefix = parseGroups(map["prefix"] as LinkedHashMap<*, *>)
-                val msg = parseMsg(map["msg"] as LinkedHashMap<*, *>)
+                val msg = parseGroup(map["msg"], isMsg = true)
                 val suffix = parseGroups(map["suffix"] as? LinkedHashMap<*, *>)
                 Format(condition, priority, prefix, msg, suffix)
             }.sortedBy { it.priority }
@@ -155,28 +152,34 @@ object Loader {
                 val condition = map["condition"]?.toString()?.toCondition()
                 val priority = Coerce.asInteger(map["priority"]).orNull() ?: 100
                 val prefix = parseGroups(map["prefix"] as LinkedHashMap<*, *>)
-                val msg = parseMsg(map["msg"] as LinkedHashMap<*, *>)
+                val msg = parseGroup(map["msg"], isMsg = true)
                 val suffix = parseGroups(map["suffix"] as? LinkedHashMap<*, *>)
                 Format(condition, priority, prefix, msg, suffix)
             }.sortedBy { it.priority }
+            val console = conf.getMapList("Console").map { map ->
+                val prefix = parseGroups(map["prefix"] as LinkedHashMap<*, *>)
+                val msg = parseGroup(map["msg"], isMsg = true)
+                val suffix = parseGroups(map["suffix"] as? LinkedHashMap<*, *>)
+                Format(null, 100, prefix, msg, suffix)
+            }
 
-            return PrivateChannel(id, settings, bindings, events, sender, receiver)
+            return PrivateChannel(id, settings, bindings, events, sender, receiver, console).also { it.init() }
         } else {
             val formats = conf.getMapList("Formats").map { map ->
                 val condition = map["condition"]?.toString()?.toCondition()
                 val priority = Coerce.asInteger(map["priority"]).orNull() ?: 100
                 val prefix = parseGroups(map["prefix"] as LinkedHashMap<*, *>)
-                val msg = parseMsg(map["msg"] as LinkedHashMap<*, *>)
+                val msg = parseGroup(map["msg"], isMsg = true)
                 val suffix = parseGroups(map["suffix"] as? LinkedHashMap<*, *>)
                 Format(condition, priority, prefix, msg, suffix)
             }.sortedBy { it.priority }
-            val console = conf.getMapList("Console").firstOrNull()?.let { map ->
+            val console = conf.getMapList("Console").map { map ->
                 val prefix = parseGroups(map["prefix"] as LinkedHashMap<*, *>)
-                val msg = parseMsg(map["msg"] as LinkedHashMap<*, *>)
+                val msg = parseGroup(map["msg"], isMsg = true)
                 val suffix = parseGroups(map["suffix"] as? LinkedHashMap<*, *>)
                 Format(null, 100, prefix, msg, suffix)
             }
-            return Channel(id, settings, bindings, events, formats, console)
+            return Channel(id, settings, bindings, events, formats, console).also { it.init() }
         }
     }
 
@@ -193,7 +196,7 @@ object Loader {
             val priority = map.getInt("priority", 100)
             val regex = map.getString("pattern")!!.toRegex()
             val filterTextRegex = map.getString("text-filter")?.toRegex()
-            val displayJson = parseJSON(map.getConfigurationSection("display")!!.toMap())
+            val displayJson = parseJSON(map.getConfigurationSection("display")!!.toMap(), isMsg = false)
             val reaction = map["action"]?.let { Reaction(it.asList()) }
 
             CustomFunction(id, condition, priority, regex, filterTextRegex, displayJson, reaction)
@@ -202,30 +205,29 @@ object Loader {
         Function.reload(functions)
     }
 
-    private fun parseGroups(map: LinkedHashMap<*, *>?): Map<String, List<Group>> {
-        map ?: return emptyMap()
-        return map.map { (id, content) ->
-            id as String
-            when (content) {
-                is Map<*, *> -> {
-                    val condition = content["condition"]?.toString()?.toCondition()
-                    id to listOf(Group(condition, 100, parseJSON(content)))
-                }
-                is List<*> -> {
-                    id to content.map {
-                        it as LinkedHashMap<*, *>
-                        val condition = it["condition"]?.toString()?.toCondition()
-                        val priority = Coerce.asInteger(map["priority"]).orNull() ?: 100
-                        Group(condition, priority, parseJSON(it))
-                    }.sortedBy { it.priority }
-                }
-                else -> error("Unexpected group: $content")
+    private fun parseGroups(map: LinkedHashMap<*, *>?, isMsg: Boolean = false): Map<String, List<Group>> {
+        return map?.map { (id, content) -> (id as String) to parseGroup(content, isMsg) }?.toMap() ?: emptyMap()
+    }
+
+    private fun parseGroup(content: Any?, isMsg: Boolean = false): List<Group> {
+        return when (content) {
+            is Map<*, *> -> {
+                val condition = content["condition"]?.toString()?.toCondition()
+                listOf(Group(condition, 100, parseJSON(content, isMsg)))
             }
-        }.toMap()
+            is List<*> -> {
+                content.map {
+                    it as LinkedHashMap<*, *>
+                    val condition = it["condition"]?.toString()?.toCondition()
+                    val priority = Coerce.asInteger(it["priority"]).orNull() ?: 100
+                    Group(condition, priority, parseJSON(it, isMsg))
+                }.sortedBy { it.priority }
+            }
+            else -> error("Unexpected group: $content")
+        }
     }
 
-    private fun parseJSON(content: Map<*, *>): JsonComponent {
-        val text = Property.serialize(content["text"] ?: "null").map { Text(it.first, it.second.getCondition()) }
+    private fun parseJSON(content: Map<*, *>, isMsg: Boolean = false): JsonComponent {
         val style = mutableListOf<Style?>()
         style += content["hover"]?.serialize()?.map { it.first to it.second.getCondition() }?.let { Style.Hover.Text(it) }
         style += content["suggest"]?.serialize()?.map { it.first to it.second.getCondition() }?.let { Style.Click.Suggest(it) }
@@ -235,21 +237,13 @@ object Loader {
         style += content["file"]?.serialize()?.map { it.first to it.second.getCondition() }?.let { Style.Click.File(it) }
         style += content["insertion"]?.serialize()?.map { it.first to it.second.getCondition() }?.let { Style.Insertion(it) }
         style += content["font"]?.serialize()?.map { it.first to it.second.getCondition() }?.let { Style.Font(it) }
-        return JsonComponent(text, style.filterNotNull())
-    }
-
-    private fun parseMsg(content: Map<*, *>): MsgComponent {
-        val defaultColor = content["default-color"]!!.serialize().map { CustomColor.get(it.first) to it.second.getCondition() }
-        val style = mutableListOf<Style?>()
-        style += content["hover"]?.serialize()?.map { it.first to it.second.getCondition() }?.let { Style.Hover.Text(it) }
-        style += content["suggest"]?.serialize()?.map { it.first to it.second.getCondition() }?.let { Style.Click.Suggest(it) }
-        style += content["command"]?.serialize()?.map { it.first to it.second.getCondition() }?.let { Style.Click.Command(it) }
-        style += content["url"]?.serialize()?.map { it.first to it.second.getCondition() }?.let { Style.Click.Url(it) }
-        style += content["copy"]?.serialize()?.map { it.first to it.second.getCondition() }?.let { Style.Click.Copy(it) }
-        style += content["file"]?.serialize()?.map { it.first to it.second.getCondition() }?.let { Style.Click.File(it) }
-        style += content["insertion"]?.serialize()?.map { it.first to it.second.getCondition() }?.let { Style.Insertion(it) }
-        style += content["font"]?.serialize()?.map { it.first to it.second.getCondition() }?.let { Style.Font(it) }
-        return MsgComponent(defaultColor, style.filterNotNull())
+        return if (isMsg) {
+            val defaultColor = content["default-color"]!!.serialize().map { CustomColor.get(it.first) to it.second.getCondition() }
+            MsgComponent(defaultColor, style.filterNotNull())
+        } else {
+            val text = Property.serialize(content["text"] ?: "null").map { Text(it.first, it.second.getCondition()) }
+            JsonComponent(text, style.filterNotNull())
+        }
     }
 
     private fun filterChannelFiles(file: File): List<File> {

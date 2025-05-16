@@ -1,9 +1,6 @@
 package me.arasple.mc.trchat.module.internal.proxy
 
 import me.arasple.mc.trchat.api.impl.BukkitProxyManager
-import me.arasple.mc.trchat.api.nms.NMS
-import me.arasple.mc.trchat.module.conf.Loader
-import me.arasple.mc.trchat.module.display.channel.Channel
 import me.arasple.mc.trchat.module.display.function.standard.EnderChestShow
 import me.arasple.mc.trchat.module.display.function.standard.InventoryShow
 import me.arasple.mc.trchat.module.display.function.standard.ItemShow
@@ -11,11 +8,14 @@ import me.arasple.mc.trchat.module.internal.TrChatBukkit
 import me.arasple.mc.trchat.module.internal.command.main.CommandReply
 import me.arasple.mc.trchat.module.internal.proxy.redis.RedisManager
 import me.arasple.mc.trchat.module.internal.proxy.redis.TrRedisMessage
-import me.arasple.mc.trchat.util.*
+import me.arasple.mc.trchat.util.print
+import me.arasple.mc.trchat.util.proxy.buildMessage
 import me.arasple.mc.trchat.util.proxy.common.MessageReader
+import me.arasple.mc.trchat.util.sendComponent
+import me.arasple.mc.trchat.util.toUUID
 import org.bukkit.Bukkit
-import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
+import org.bukkit.inventory.Inventory
 import org.bukkit.plugin.messaging.PluginMessageListener
 import org.bukkit.plugin.messaging.PluginMessageRecipient
 import taboolib.common.platform.function.console
@@ -27,6 +27,8 @@ import taboolib.module.chat.Components
 import taboolib.module.lang.asLangText
 import taboolib.module.lang.sendLang
 import taboolib.module.nms.MinecraftVersion
+import taboolib.module.ui.MenuHolder
+import taboolib.module.ui.type.impl.ChestImpl
 import taboolib.platform.util.bukkitPlugin
 import taboolib.platform.util.deserializeToInventory
 import taboolib.platform.util.onlinePlayers
@@ -95,31 +97,17 @@ sealed interface BukkitProxyProcessor : PluginMessageListener {
                 }
             }
             "UpdateAllNames" -> {
-                onlinePlayers.forEach {
-                    NMS.instance.removeCustomChatCompletions(it, BukkitProxyManager.allPlayerNames.keys.toList())
-                }
                 BukkitProxyManager.updateNames()
                 val names = data[1].takeIf { it != "" }?.split(",") ?: return
                 BukkitProxyManager.allPlayerNames = data[2].split(",").mapIndexed { index, displayName ->
                     names[index] to displayName.takeIf { it != "null" }
                 }.toMap()
-                onlinePlayers.forEach {
-                    NMS.instance.addCustomChatCompletions(it, BukkitProxyManager.allPlayerNames.keys.toList())
-                }
             }
             "GlobalMute" -> {
                 when (data[1]) {
                     "on" -> TrChatBukkit.isGlobalMuting = true
                     "off" -> TrChatBukkit.isGlobalMuting = false
                 }
-            }
-            "SendProxyChannel" -> {
-                val id = data[1]
-                val channel = data[2]
-                Loader.loadChannel(id, YamlConfiguration().also { it.loadFromString(channel) }).let {
-                    Channel.channels[it.id] = it
-                }
-                BukkitProxyManager.sendMessage(onlinePlayers.firstOrNull(), arrayOf("LoadedProxyChannel", id))
             }
             "ItemShow" -> {
                 if (data[1] > MinecraftVersion.minecraftVersion) return
@@ -251,15 +239,9 @@ sealed interface BukkitProxyProcessor : PluginMessageListener {
         override fun execute(data: Array<String>) {
             when (data[0]) {
                 "UpdateNames" -> {
-                    onlinePlayers.forEach {
-                        NMS.instance.removeCustomChatCompletions(it, BukkitProxyManager.allPlayerNames.keys.toList())
-                    }
                     val port = data[2].toInt()
                     val names = data[1].takeIf { it != "" }?.split(",")?.map { it.split("-", limit = 2) } ?: return
                     allNames[port] = names.associate { it[0] to it[1].takeIf { dn -> dn != "null" } }
-                    onlinePlayers.forEach {
-                        NMS.instance.addCustomChatCompletions(it, BukkitProxyManager.allPlayerNames.keys.toList())
-                    }
                 }
                 else -> super.execute(data)
             }
@@ -288,6 +270,15 @@ sealed interface BukkitProxyProcessor : PluginMessageListener {
             if (!Bukkit.getMessenger().isIncomingChannelRegistered(bukkitPlugin, this)) {
                 Bukkit.getMessenger().registerIncomingPluginChannel(bukkitPlugin, this, listener)
             }
+        }
+
+        fun createNoClickChest(rows: Int, title: String): Inventory {
+            return MenuHolder(object : ChestImpl(title) {
+                init {
+                    rows(rows)
+                    onClick(lock = true)
+                }
+            }).inventory
         }
 
     }

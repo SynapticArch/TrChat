@@ -1,6 +1,5 @@
 package me.arasple.mc.trchat.module.internal.listener
 
-import me.arasple.mc.trchat.api.impl.BungeeChannelManager
 import me.arasple.mc.trchat.api.impl.BungeeComponentManager
 import me.arasple.mc.trchat.api.impl.BungeeProxyManager
 import me.arasple.mc.trchat.module.internal.TrChatBungee
@@ -57,7 +56,11 @@ object ListenerBungeeTransfer {
                 val perm = data[3]
                 val doubleTransfer = data[4].toBoolean()
                 val ports = data[5].takeIf { it != "" }?.split(";")?.map { it.toInt() }
-                val message = Components.parseRaw(raw)
+                val message = try {
+                    Components.parseRaw(raw).also { it.sendTo(console()) }
+                } catch (e: Throwable) {
+                    Components.text("Unable to parse raw message!")
+                }
 
                 if (doubleTransfer) {
                     BungeeProxyManager.sendMessageToAll("BroadcastRaw", uuid, raw, perm, data[4], data[5]) {
@@ -72,18 +75,10 @@ object ListenerBungeeTransfer {
                         }
                     }
                 }
-                message.sendTo(console())
             }
             "UpdateNames" -> {
                 val names = data[1].split(",").map { it.split("-", limit = 2) }
                 BungeeProxyManager.allNames[connection.address.port] = names.associate { it[0] to it[1].takeIf { dn -> dn != "null" } }
-            }
-            "FetchProxyChannels" -> {
-                BungeeChannelManager.sendAllProxyChannels(connection.address.port)
-            }
-            "LoadedProxyChannel" -> {
-                val id = data[1]
-                BungeeChannelManager.loadedServers.computeIfAbsent(id) { ArrayList() }.add(connection.address.port)
             }
         }
     }

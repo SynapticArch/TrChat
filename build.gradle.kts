@@ -3,7 +3,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     java
-    id("io.izzel.taboolib") version "2.0.2"
+    id("io.izzel.taboolib") version "2.0.23"
     id("org.jetbrains.kotlin.jvm") version "1.8.22"
 }
 
@@ -14,13 +14,34 @@ subprojects {
 
     taboolib {
         env {
+            install("basic-configuration")
             install(
-                UNIVERSAL, DATABASE, KETHER, METRICS, NMS, NMS_UTIL, UI,
-                EXPANSION_REDIS, EXPANSION_JAVASCRIPT, EXPANSION_PLAYER_DATABASE,
-                BUKKIT_ALL, BUNGEE, VELOCITY
+                BukkitHook,
+                BukkitNMSUtil,
+                BukkitNMSItemTag,
+                BukkitUI
             )
+            install(
+                "database",
+                "database-alkaid-redis",
+                "database-player"
+            )
+            install(
+                "minecraft-chat",
+                "minecraft-command-helper",
+                "minecraft-i18n",
+                "minecraft-kether",
+                "minecraft-metrics"
+            )
+            install(JavaScript)
+            install(Bukkit, BungeeCord, Velocity)
         }
-        version { taboolib = "6.1.0" }
+        version {
+            taboolib = "6.2.3-8cc2f66"
+            coroutines = null
+//            isSkipKotlin = true
+//            isSkipKotlinRelocate = true
+        }
     }
 
     // 全局仓库
@@ -29,7 +50,7 @@ subprojects {
         mavenCentral()
         maven("https://jitpack.io")
         maven("https://oss.sonatype.org/content/repositories/snapshots")
-        maven("https://papermc.io/repo/repository/maven-public/")
+        maven("https://repo.papermc.io/repository/maven-public/")
         maven("https://repo.xenondevs.xyz/releases")
         maven("https://repo.extendedclip.com/content/repositories/placeholderapi/")
         maven("https://repo.codemc.io/repository/maven-public/")
@@ -40,7 +61,7 @@ subprojects {
         compileOnly(kotlin("stdlib"))
         compileOnly("com.google.code.gson:gson:2.8.5")
         compileOnly("com.google.guava:guava:21.0")
-        compileOnly("net.kyori:adventure-api:4.15.0")
+        compileOnly("net.kyori:adventure-api:4.17.0")
     }
 
     // 编译配置

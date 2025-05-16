@@ -1,5 +1,6 @@
 package me.arasple.mc.trchat.module.display.function.standard
 
+import me.arasple.mc.trchat.api.event.TrChatMentionEvent
 import me.arasple.mc.trchat.api.impl.BukkitProxyManager
 import me.arasple.mc.trchat.module.conf.file.Functions
 import me.arasple.mc.trchat.module.display.function.Function
@@ -50,16 +51,22 @@ object Mention : Function("MENTION") {
     val cooldown = ConfigNodeTransfer<String, Long> { parseMillis() }
 
     override fun createVariable(sender: Player, message: String): String {
-        return if (!enabled) {
-            message
-        } else {
-            val regex = getRegex(sender) ?: return message
-            val result = regex.replace(message, "{{MENTION:\$1}}")
-            if (result != message && !sender.hasPermission("trchat.bypass.mentioncd")) {
-                sender.updateCooldown(CooldownType.MENTION, cooldown.get())
-            }
-            result
+        if (!enabled) {
+            return message
         }
+        val regex = getRegex(sender) ?: return message
+        val result = message.replace(regex) {
+            val name = it.groupValues[1]
+            if (TrChatMentionEvent(sender, name).call()) {
+                "{{MENTION:$name}}"
+            } else {
+                it.value
+            }
+        }
+        if (result != message && !sender.hasPermission("trchat.bypass.mentioncd")) {
+            sender.updateCooldown(CooldownType.MENTION, cooldown.get())
+        }
+        return result
     }
 
     override fun parseVariable(sender: Player, arg: String): ComponentText? {
