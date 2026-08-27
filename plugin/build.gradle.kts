@@ -15,9 +15,14 @@ taboolib {
             name("EcoEnchants").with("bukkit").optional(true)
             name("ItemsAdder").with("bukkit").optional(true)
             name("Nova").with("bukkit").optional(true)
+            name("SayanVanish").with("bukkit").optional(true)
             name("Multiverse-Core").with("bukkit").loadafter(true)
             name("Geyser-Spigot").with("bukkit").loadafter(true)
         }
+//        version {
+//            isSkipKotlin = true
+//            isSkipKotlinRelocate = true
+//        }
     }
     relocate("com.eatthepath.uuid.", "${rootProject.group}.library.uuid.")
 //    relocate("com.electronwill.nightconfig", "com.electronwill.nightconfig_3_6_7")

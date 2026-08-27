@@ -10,6 +10,8 @@ import taboolib.common.platform.command.suggest
 import taboolib.common.platform.function.console
 import taboolib.common.platform.function.pluginVersion
 import taboolib.common.util.unsafeLazy
+import taboolib.module.chat.Components
+import taboolib.module.lang.Language
 import taboolib.module.lang.sendLang
 import taboolib.platform.VelocityPlugin
 
@@ -25,7 +27,12 @@ object TrChatVelocity : Plugin() {
 
     val plugin by unsafeLazy { VelocityPlugin.getInstance() }
 
+    init {
+        Language.releasePath = "plugins/trchat/lang/{1}"
+    }
+
     override fun onLoad() {
+        Components.useAdventure = true
         plugin.server.channelRegistrar.register(VelocityProxyManager.incoming, VelocityProxyManager.outgoing)
         console().sendLang("Plugin-Loading", plugin.server.version.version)
         console().sendLang("Plugin-Proxy-Supported", "Velocity")

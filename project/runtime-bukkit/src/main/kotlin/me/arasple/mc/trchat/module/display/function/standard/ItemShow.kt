@@ -13,7 +13,6 @@ import me.arasple.mc.trchat.module.internal.hook.type.HookDisplayItem
 import me.arasple.mc.trchat.module.internal.script.Reaction
 import me.arasple.mc.trchat.util.*
 import net.kyori.adventure.translation.Translatable
-import net.md_5.bungee.api.chat.TextComponent
 import org.bukkit.Material
 import org.bukkit.block.ShulkerBox
 import org.bukkit.entity.Player
@@ -31,6 +30,7 @@ import taboolib.common5.util.parseMillis
 import taboolib.library.xseries.XMaterial
 import taboolib.module.chat.ComponentText
 import taboolib.module.chat.Components
+import taboolib.module.chat.impl.AdventureComponent
 import taboolib.module.chat.impl.DefaultComponent
 import taboolib.module.configuration.ConfigNode
 import taboolib.module.configuration.ConfigNodeTransfer
@@ -40,7 +40,6 @@ import taboolib.module.nms.getLanguageKey
 import taboolib.module.ui.buildMenu
 import taboolib.module.ui.type.Chest
 import taboolib.module.ui.type.PageableChest
-import taboolib.platform.Folia
 import taboolib.platform.util.*
 
 /**
@@ -78,6 +77,10 @@ object ItemShow : Function("ITEM") {
     @ConfigNode("General.Item-Show.Keys", "function.yml")
     var keys = emptyList<String>()
 
+    val keysRegex by resettableLazy("functions") {
+        keys.map { Regex("${Regex.escape(it)}-?([0-9])?", RegexOption.IGNORE_CASE) }
+    }
+
     private val cacheComponent: Cache<ItemStack, ComponentText> = CacheBuilder.newBuilder()
         .maximumSize(50)
         .build()
@@ -92,12 +95,14 @@ object ItemShow : Function("ITEM") {
             return message
         }
         var result = message
-        keys.forEach { key ->
-            (1..9).forEach {
-                result = result.replace("$key-$it", "{{ITEM:$it}}", ignoreCase = true)
-                result = result.replace("$key$it", "{{ITEM:$it}}", ignoreCase = true)
+        keysRegex.forEach { key ->
+            result = result.replace(key) {
+                var i = it.groupValues.getOrNull(1)
+                if (i.isNullOrBlank()) {
+                    i = (sender.inventory.heldItemSlot + 1).toString()
+                }
+                "{{ITEM:${push(i)}}}"
             }
-            result = result.replace(key, "{{ITEM:${sender.inventory.heldItemSlot + 1}}}", ignoreCase = true)
         }
         return result
     }
@@ -207,12 +212,12 @@ object ItemShow : Function("ITEM") {
     @Suppress("Deprecation")
     private fun ItemStack.getNameComponent(player: Player): ComponentText {
         if (!originName && itemMeta?.hasDisplayName() == true) {
-//            try {
-//                return itemMeta!!.displayName()!!.toNative()
-//            } catch (_: Throwable) {
-//            }
+            // display_name
             if (isDragonCoreHooked) {
-                return Components.empty().append(DefaultComponent(listOf(TextComponent(itemMeta!!.displayName))))
+                return Components.text(itemMeta!!.displayName, color = false)
+            }
+            if (Components.useAdventure) {
+                return Components.empty().append(AdventureComponent(itemMeta!!.displayName()!!))
             }
             try {
                 // 使有效部分在latest
@@ -220,10 +225,17 @@ object ItemShow : Function("ITEM") {
             } catch (_: Throwable) {
             }
             return Components.text(itemMeta!!.displayName)
+        } else if (kotlin.runCatching { itemMeta?.hasItemName() }.getOrDefault(false) == true) {
+            // 新组件 item_name
+            if (Components.useAdventure) {
+                return Components.empty().append(AdventureComponent(itemMeta!!.itemName()))
+            }
+            return Components.text(itemMeta!!.itemName)
         } else {
+            // origin name
             if (MinecraftVersion.isHigherOrEqual(MinecraftVersion.V1_15)) {
                 val key = try {
-                    if (Folia.isFolia) {
+                    if (Components.useAdventure) {
                         (this as Translatable).translationKey()
                     } else {
                         getLanguageKey().path

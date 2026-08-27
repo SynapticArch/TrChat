@@ -9,19 +9,24 @@ import me.arasple.mc.trchat.api.nms.NMS
 import me.arasple.mc.trchat.module.conf.file.Settings
 import me.arasple.mc.trchat.util.data
 import me.arasple.mc.trchat.util.toUUID
+import net.kyori.adventure.text.Component
 import net.md_5.bungee.api.chat.BaseComponent
-import net.md_5.bungee.api.chat.TextComponent
 import org.bukkit.command.CommandSender
 import org.bukkit.command.ProxiedCommandSender
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
 import taboolib.common.platform.*
 import taboolib.common.platform.function.adaptCommandSender
+import taboolib.common.platform.function.debug
 import taboolib.module.chat.ComponentText
 import taboolib.module.chat.Components
+import taboolib.module.chat.impl.AdventureComponent
 import taboolib.module.chat.impl.DefaultComponent
 import taboolib.module.configuration.ConfigNode
 import java.util.*
+
+private typealias BungeeTextComponent = net.md_5.bungee.api.chat.TextComponent
+private typealias AdventureTextComponent = net.kyori.adventure.text.TextComponent
 
 /**
  * @author ItsFlicker
@@ -55,7 +60,7 @@ object BukkitComponentManager : ComponentManager {
             is UUID -> sender
             else -> null
         }
-        if (commandSender is Player && uuid in commandSender.data.ignored) {
+        if (commandSender is Player && commandSender.data.hasIgnored(uuid)) {
             return
         }
         val event = TrChatReceiveEvent(commandSender, uuid, component)
@@ -70,6 +75,7 @@ object BukkitComponentManager : ComponentManager {
             event.message
         }
         if (commandSender is Player) {
+            debug("Component to send: ${newComponent.toRawMessage()}")
             NMS.instance.sendMessage(commandSender, newComponent, event.sender, Settings.usePackets)
         } else {
             newComponent.sendTo(adaptCommandSender(commandSender))
@@ -78,7 +84,11 @@ object BukkitComponentManager : ComponentManager {
 
     override fun filterComponent(component: ComponentText, maxLength: Int): ComponentText {
         return filteredCache.get(component) {
-            validateComponent(DefaultComponent(listOf(filterComponent(component.toSpigotObject()))), maxLength)
+            if (Components.useAdventure) {
+                validateComponent(AdventureComponent(filterComponent(component.toAdventureObject())), maxLength)
+            } else {
+                validateComponent(DefaultComponent(listOf(filterComponent(component.toSpigotObject()))), maxLength)
+            }
         }
     }
 
@@ -93,12 +103,23 @@ object BukkitComponentManager : ComponentManager {
     }
 
     private fun filterComponent(component: BaseComponent): BaseComponent {
-        if (component is TextComponent && component.text.isNotEmpty()) {
+        if (component is BungeeTextComponent && component.text.isNotEmpty()) {
             component.text = TrChat.api().getFilterManager().filter(component.text).filtered
         }
         if (!component.extra.isNullOrEmpty()) {
             component.extra = component.extra.map { filterComponent(it) }
         }
         return component
+    }
+
+    private fun filterComponent(component: Component): Component {
+        var new = component
+        if (component is AdventureTextComponent && component.content().isNotEmpty()) {
+            new = component.content(TrChat.api().getFilterManager().filter(component.content()).filtered)
+        }
+        if (component.children().isNotEmpty()) {
+            new = new.children(component.children().map { filterComponent(it) })
+        }
+        return new
     }
 }

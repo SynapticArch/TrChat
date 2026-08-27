@@ -2,12 +2,14 @@ package me.arasple.mc.trchat.module.display.channel
 
 import me.arasple.mc.trchat.TrChat
 import me.arasple.mc.trchat.api.event.TrChatEvent
+import me.arasple.mc.trchat.api.event.TrChatSendEvent
 import me.arasple.mc.trchat.api.impl.BukkitProxyManager
 import me.arasple.mc.trchat.module.conf.file.Settings
 import me.arasple.mc.trchat.module.display.channel.obj.*
 import me.arasple.mc.trchat.module.display.format.Format
 import me.arasple.mc.trchat.module.display.format.MsgComponent
 import me.arasple.mc.trchat.module.display.function.Function
+import me.arasple.mc.trchat.module.internal.TrChatBukkit
 import me.arasple.mc.trchat.module.internal.data.ChatLogs
 import me.arasple.mc.trchat.module.internal.service.Metrics
 import me.arasple.mc.trchat.util.*
@@ -18,9 +20,9 @@ import taboolib.common.platform.command.command
 import taboolib.common.platform.function.adaptPlayer
 import taboolib.common.platform.function.console
 import taboolib.common.platform.function.getProxyPlayer
-import taboolib.common.platform.function.unregisterCommand
 import taboolib.common.util.Strings
 import taboolib.common.util.subList
+import taboolib.module.chat.ComponentText
 import taboolib.module.chat.Components
 import taboolib.module.lang.sendLang
 import taboolib.platform.util.onlinePlayers
@@ -39,6 +41,8 @@ open class Channel(
     val consoleFormat: List<Format>
 ) {
 
+    var isUnregistered = false
+
     val listeners: MutableSet<String> = mutableSetOf()
 
     open fun init() {
@@ -56,7 +60,7 @@ open class Channel(
     }
 
     open fun registerCommand() {
-        if (bindings.command.isNullOrEmpty()) return
+        if (bindings.command.isNullOrEmpty() || TrChatBukkit.isActivated) return
         command(
             name = bindings.command[0],
             aliases = subList(bindings.command, 1),
@@ -65,18 +69,19 @@ open class Channel(
             permissionDefault = PermissionDefault.TRUE
         ) {
             execute<Player> { sender, _, _ ->
-                if (sender.session.channel == this@Channel.id) {
+                if (sender.session.channel == id) {
                     quit(sender, setDefault = true)
                 } else {
-                    join(sender, this@Channel)
+                    join(sender, id)
                 }
             }
             dynamic("message", optional = true) {
                 execute<CommandSender> { sender, _, argument ->
+                    val channel = channels[id] ?: return@execute
                     if (sender is Player) {
-                        execute(sender, argument)
+                        channel.execute(sender, argument)
                     } else {
-                        execute(sender, argument)
+                        channel.execute(sender, argument)
                     }
                 }
             }
@@ -99,6 +104,7 @@ open class Channel(
     }
 
     open fun execute(sender: CommandSender, message: String): ChannelExecuteResult {
+        Function.clearMentioned()
         if (sender is Player) {
             return execute(sender, message)
         }
@@ -128,22 +134,30 @@ open class Channel(
     }
 
     open fun execute(player: Player, message: String, toConsole: Boolean = true): ChannelExecuteResult {
-        if (!checkLimits(player, message)) {
+        return execute(player, Components.text(message), toConsole)
+    }
+
+    open fun execute(player: Player, message: ComponentText, toConsole: Boolean = true): ChannelExecuteResult {
+        Function.clearMentioned()
+        var plain = message.toPlainText()
+        if (!checkLimits(player, plain)) {
             return ChannelExecuteResult(failedReason = ChannelExecuteResult.FailReason.LIMITED)
         }
         val session = player.session
         session.lastChannel = this
-        session.lastPublicMessage = message
+        session.lastPublicMessage = plain
         val event = TrChatEvent(this, session, message)
         if (!event.call()) {
             return ChannelExecuteResult(failedReason = ChannelExecuteResult.FailReason.EVENT)
         }
-        val msg = events.process(player, event.message)?.replace("{{", "\\{{")
+        val msg = events.process(player, event.component)
             ?: return ChannelExecuteResult(failedReason = ChannelExecuteResult.FailReason.EVENT)
-        ChatLogs.logNormal(player.name, msg)
+        plain = msg.toPlainText()
+        ChatLogs.logNormal(player.name, plain)
         Metrics.increase(0)
 
-        val component = Components.empty()
+        var component = Components.empty()
+        var mentioned = emptySet<String>()
         formats.firstOrNull { it.condition.pass(player) }?.let { format ->
             format.prefix
                 .mapNotNull { prefix -> prefix.value.firstOrNull { it.condition.pass(player) }?.content?.toTextComponent(player) }
@@ -151,6 +165,7 @@ open class Channel(
             format.msg.firstOrNull { it.condition.pass(player) }
                 ?.let { component.append((it.content as MsgComponent).createComponent(player, msg, settings.disabledFunctions)) }
                 ?: return ChannelExecuteResult(failedReason = ChannelExecuteResult.FailReason.NO_FORMAT)
+            mentioned = Function.takeMentioned()
             format.suffix
                 .mapNotNull { suffix -> suffix.value.firstOrNull { it.condition.pass(player) }?.content?.toTextComponent(player) }
                 .forEach { suffix -> component.append(suffix) }
@@ -159,6 +174,25 @@ open class Channel(
             session.cancelChat = false
             return ChannelExecuteResult(failedReason = ChannelExecuteResult.FailReason.EVENT)
         }
+        val sendEvent = TrChatSendEvent(this, session, component)
+        if (!sendEvent.call()) {
+            return ChannelExecuteResult(failedReason = ChannelExecuteResult.FailReason.EVENT)
+        }
+        component = sendEvent.component
+
+        if (player.data.isShadowMuted) {
+            if (events.send(player, player.name, plain)) {
+                player.sendComponent(player, component)
+                if (player.name in mentioned) {
+                    BukkitProxyManager.sendProxyLang(player, player.name, "Function-Mention-Notify", player.name)
+                }
+            }
+            if (toConsole) {
+                console().sendComponent(player, component)
+            }
+            return ChannelExecuteResult(failedReason = ChannelExecuteResult.FailReason.LIMITED)
+        }
+
         // Proxy
         if (settings.proxy) {
             if (BukkitProxyManager.processor != null || settings.forceProxy) {
@@ -168,7 +202,9 @@ open class Channel(
                     component,
                     settings.listenPermission,
                     settings.doubleTransfer,
-                    settings.ports
+                    settings.ports,
+                    senderName = player.name,
+                    mentioned = mentioned.joinToString(",")
                 )
                 return ChannelExecuteResult.success(component)
             }
@@ -176,28 +212,35 @@ open class Channel(
         // Local
         when (settings.range.type) {
             ChannelRange.Type.ALL -> {
-                listeners.filter { events.send(player, it, msg) }.forEach {
+                val receivers = listeners.filter { events.send(player, it, plain) }
+                receivers.forEach {
                     getProxyPlayer(it)?.sendComponent(player, component)
                 }
+                notifyMentioned(player, receivers, mentioned)
             }
             ChannelRange.Type.SINGLE_WORLD -> {
-                onlinePlayers.filter { it.name in listeners
+                val receivers = onlinePlayers.filter { it.name in listeners
                         && it.world == player.world
-                        && events.send(player, it.name, msg) }.forEach {
+                        && events.send(player, it.name, plain) }
+                receivers.forEach {
                     it.sendComponent(player, component)
                 }
+                notifyMentioned(player, receivers.map { it.name }, mentioned)
             }
             ChannelRange.Type.DISTANCE -> {
-                onlinePlayers.filter { it.name in listeners
+                val receivers = onlinePlayers.filter { it.name in listeners
                         && it.world == player.world
                         && it.location.distance(player.location) <= settings.range.distance
-                        && events.send(player, it.name, msg) }.forEach {
+                        && events.send(player, it.name, plain) }
+                receivers.forEach {
                     it.sendComponent(player, component)
                 }
+                notifyMentioned(player, receivers.map { it.name }, mentioned)
             }
             ChannelRange.Type.SELF -> {
-                if (events.send(player, player.name, msg)) {
+                if (events.send(player, player.name, plain)) {
                     player.sendComponent(player, component)
+                    notifyMentioned(player, listOf(player.name), mentioned)
                 }
             }
         }
@@ -205,6 +248,14 @@ open class Channel(
             console().sendComponent(player, component)
         }
         return ChannelExecuteResult.success(component)
+    }
+
+    /** 只有真正收到（能看到）该消息且被 @ 的玩家才会收到提示 */
+    protected fun notifyMentioned(sender: Player, receivers: Collection<String>, mentioned: Set<String>) {
+        if (mentioned.isEmpty()) return
+        receivers.filter { it in mentioned }.forEach {
+            BukkitProxyManager.sendProxyLang(sender, it, "Function-Mention-Notify", sender.name)
+        }
     }
 
     open fun checkLimits(player: Player, message: String): Boolean {
@@ -230,7 +281,7 @@ open class Channel(
         }
         if (!player.hasPermission("trchat.bypass.repeat")) {
             val lastMessage = player.session.lastPublicMessage
-            if (Settings.chatSimilarity > 0 && Strings.similarDegree(lastMessage, message) > Settings.chatSimilarity) {
+            if (Settings.chatSimilarity > 0 && Settings.chatSimilarity <= 1 && Strings.similarDegree(lastMessage, message) >= Settings.chatSimilarity) {
                 player.sendLang("General-Too-Similar")
                 return false
             }
@@ -250,7 +301,7 @@ open class Channel(
     }
 
     open fun unregister() {
-        bindings.command?.forEach { unregisterCommand(it) }
+        isUnregistered = true
         listeners.clear()
     }
 

@@ -8,9 +8,10 @@ Options:
   Prevent-Tab-Complete: false
   Component-Max-Length: 32700
   Always-Cancel-Chat-Event: false
-  Cheat-Client-Secure-Chat: true
+  Cheat-Client-Secure-Chat: false
   Use-Packets: true
   Disabled-Commands: []
+  Disabled-Worlds: []
 
 Channel:
   Default: 'Normal'
@@ -38,6 +39,10 @@ Chat:
   Anti-Repeat: 0.85
   Cooldown: '2.0s'
   Length-Limit: 100
+  Permission-Check:
+    Sign: false #无发言权限无法编辑告示牌 true 开启 false关闭
+    Book: false #无发言权限无法编辑书与笔 true 开启 false关闭
+    Anvil: false #无发言权限无法铁砧改名 true 开启 false关闭
 
 Color:
   Chat: true
@@ -49,3 +54,6 @@ Simple-Component:
   Hover: false
   Anvil: false
   Sign: false
+
+MiniMessage:
+  Text: false
