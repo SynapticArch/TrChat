@@ -42,6 +42,8 @@ Plugin-Failed: '&8[&3Tr&bChat&8] &cOperación fallida.'
 
 General-Too-Long: '&8[&3Tr&bChat&8] &7El mensaje enviado es muy largo. &8[&6{0}&8/&2{1}&8]'
 General-Too-Similar: '&8[&3Tr&bChat&8] &7Porfavor no repitas el mismo mensaje.'
+General-Too-Frequent: '&8[&3Tr&bChat&8] &7Estás enviando mensajes con demasiada frecuencia, por favor espera.'
+General-Too-Duplicate: '&8[&3Tr&bChat&8] &7Tu mensaje contiene frases repetidas consecutivamente, por favor no hagas spam.'
 General-No-Permission: '&8[&3Tr&bChat&8] &7No tienes permisos para realizar esto.'
 General-Muted: '&8[&3Tr&bChat&8] &cFuiste silenciado por {0}! Razón: {1}'
 General-Cancel-Muted: '&8[&3Tr&bChat&8] &aYa puedes escribir.'

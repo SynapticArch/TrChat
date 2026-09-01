@@ -36,8 +36,30 @@ object Settings {
     @ConfigNode("Chat.Cooldown", "settings.yml")
     val chatCooldown = ConfigNodeTransfer<String, Long> { parseMillis() }
 
-    @ConfigNode("Chat.Anti-Repeat", "settings.yml")
+    @ConfigNode("Chat.Interception.Anti-Repeat.Similarity", "settings.yml")
     var chatSimilarity = 0.85
+        private set
+
+    @ConfigNode("Chat.Interception.Anti-Repeat.Max-Per-Period", "settings.yml")
+    var chatSimilarityMaxPerPeriod = 0
+        private set
+
+    @ConfigNode("Chat.Interception.Anti-Repeat.Period", "settings.yml")
+    val chatSimilarityPeriod = ConfigNodeTransfer<String, Long> { parseMillis() }
+
+    @ConfigNode("Chat.Interception.Anti-High-frequency.Max-Per-Period", "settings.yml")
+    var chatHighFrequencyMaxPerPeriod = 0
+        private set
+
+    @ConfigNode("Chat.Interception.Anti-High-frequency.Period", "settings.yml")
+    val chatHighFrequencyPeriod = ConfigNodeTransfer<String, Long> { parseMillis() }
+
+    @ConfigNode("Chat.Interception.Anti-Duplicate-Phrase.Max-Repeat", "settings.yml")
+    var chatDuplicatePhraseMaxRepeat = 0
+        private set
+
+    @ConfigNode("Chat.Interception.Anti-Duplicate-Phrase.Whitelist", "settings.yml")
+    var chatDuplicatePhraseWhitelist = emptyList<String>()
         private set
 
     @ConfigNode("Chat.Length-Limit", "settings.yml")
