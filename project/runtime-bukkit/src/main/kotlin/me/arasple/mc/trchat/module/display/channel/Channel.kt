@@ -146,6 +146,7 @@ open class Channel(
         val session = player.session
         session.lastChannel = this
         session.lastPublicMessage = plain
+        session.similarPeriodMessages.add(System.currentTimeMillis() to plain)
         val event = TrChatEvent(this, session, message)
         if (!event.call()) {
             return ChannelExecuteResult(failedReason = ChannelExecuteResult.FailReason.EVENT)
@@ -280,10 +281,38 @@ open class Channel(
             }
         }
         if (!player.hasPermission("trchat.bypass.repeat")) {
-            val lastMessage = player.session.lastPublicMessage
-            if (Settings.chatSimilarity > 0 && Settings.chatSimilarity <= 1 && Strings.similarDegree(lastMessage, message) >= Settings.chatSimilarity) {
-                player.sendLang("General-Too-Similar")
-                return false
+            val session = player.session
+            if (Settings.chatSimilarity > 0 && Settings.chatSimilarity <= 1) {
+                val period = Settings.chatSimilarityPeriod.get().takeIf { it > 0 } ?: 60000L
+                val now = System.currentTimeMillis()
+                session.similarPeriodMessages.removeAll { now - it.first > period }
+                // 是否检测周期内所有消息的相似度：true 检测周期内所有消息（更严格）；false 只检测相邻两条消息
+                val similar = if (Settings.chatSimilarityCompareAll) {
+                    session.similarPeriodMessages.any { Strings.similarDegree(it.second, message) >= Settings.chatSimilarity }
+                } else {
+                    Strings.similarDegree(session.lastPublicMessage, message) >= Settings.chatSimilarity
+                }
+                if (similar) {
+                    if (session.similarPeriodStart == 0L || now - session.similarPeriodStart >= period) {
+                        session.similarPeriodStart = now
+                        session.similarCountInPeriod = 0
+                    }
+                    if (session.similarCountInPeriod >= Settings.chatSimilarityMaxPerPeriod) {
+                        player.sendLang("General-Too-Similar")
+                        return false
+                    }
+                    session.similarCountInPeriod++
+                }
+            }
+        }
+        if (!player.hasPermission("trchat.bypass.duplicate")) {
+            val maxRepeat = Settings.chatDuplicatePhraseMaxRepeat
+            if (maxRepeat > 0 && message.length >= 2) {
+                val whitelist = Settings.chatDuplicatePhraseWhitelist.toSet()
+                if (maxConsecutiveRepeat(message, whitelist) > maxRepeat) {
+                    player.sendLang("General-Too-Duplicate")
+                    return false
+                }
             }
         }
         if (!player.hasPermission("trchat.bypass.chatcd")) {
@@ -295,6 +324,24 @@ open class Channel(
         }
         if (Function.functions.any { !it.checkCooldown(player, message) }) {
             return false
+        }
+        // 消息发送频率检查
+        if (!player.hasPermission("trchat.bypass.highfrequency")) {
+            val max = Settings.chatHighFrequencyMaxPerPeriod
+            if (max > 0) {
+                val session = player.session
+                val period = Settings.chatHighFrequencyPeriod.get().takeIf { it > 0 } ?: 60000L
+                val now = System.currentTimeMillis()
+                if (session.totalPeriodStart == 0L || now - session.totalPeriodStart >= period) {
+                    session.totalPeriodStart = now
+                    session.totalCountInPeriod = 0
+                }
+                if (session.totalCountInPeriod >= max) {
+                    player.sendLang("General-Too-Frequent")
+                    return false
+                }
+                session.totalCountInPeriod++
+            }
         }
         player.updateCooldown(CooldownType.CHAT, Settings.chatCooldown.get())
         return true
@@ -347,4 +394,60 @@ open class Channel(
             }
         }
     }
+}
+
+// 检查重复的子字符串并统计
+private fun maxConsecutiveRepeat(message: String, whitelist: Set<String>): Int {
+    val n = message.length
+    if (n < 2) return 1
+    var max = 1
+    val checkWhitelist = whitelist.isNotEmpty()
+    var i = 0
+    while (i < n) {
+        // 剪枝①：剩余字符数不足超过当前最大值，后续起点不可能更大
+        if (n - i <= max) break
+
+        val maxLen = (n - i) / 2
+        var len = 1
+        while (len <= maxLen) {
+            // 剪枝②：当前长度下理论最大重复次数不超过 max，后续长度更不可能
+            val maxPossible = (n - i) / len
+            if (maxPossible <= max) break
+
+            if (checkWhitelist && isWhitelistedUnit(message, i, len, whitelist)) {
+                len++
+                continue
+            }
+            var count = 1
+            var j = i + len
+            while (j + len <= n && message.regionMatches(j, message, j - len, len)) {
+                count++
+                j += len
+            }
+            if (count > max) max = count
+            len++
+        }
+        i++
+    }
+    return max
+}
+
+// 判断重复单元是否被白名单豁免
+private fun isWhitelistedUnit(message: String, start: Int, len: Int, whitelist: Set<String>): Boolean {
+    for (w in whitelist) {
+        val wl = w.length
+        if (wl == 0 || len < wl || len % wl != 0) continue
+        val repeat = len / wl
+        var ok = true
+        var k = 0
+        while (k < repeat) {
+            if (!message.regionMatches(start + k * wl, w, 0, wl)) {
+                ok = false
+                break
+            }
+            k++
+        }
+        if (ok) return true
+    }
+    return false
 }
