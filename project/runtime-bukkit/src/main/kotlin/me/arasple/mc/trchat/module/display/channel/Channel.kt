@@ -280,10 +280,30 @@ open class Channel(
             }
         }
         if (!player.hasPermission("trchat.bypass.repeat")) {
-            val lastMessage = player.session.lastPublicMessage
+            val session = player.session
+            val lastMessage = session.lastPublicMessage
             if (Settings.chatSimilarity > 0 && Settings.chatSimilarity <= 1 && Strings.similarDegree(lastMessage, message) >= Settings.chatSimilarity) {
-                player.sendLang("General-Too-Similar")
-                return false
+                val period = Settings.chatSimilarityPeriod.get()?.takeIf { it > 0 } ?: 60000L
+                val now = System.currentTimeMillis()
+                if (session.similarPeriodStart == 0L || now - session.similarPeriodStart >= period) {
+                    session.similarPeriodStart = now
+                    session.similarCountInPeriod = 0
+                }
+                if (session.similarCountInPeriod >= Settings.chatSimilarityMaxPerPeriod) {
+                    player.sendLang("General-Too-Similar")
+                    return false
+                }
+                session.similarCountInPeriod++
+            }
+        }
+        if (!player.hasPermission("trchat.bypass.duplicate")) {
+            val maxRepeat = Settings.chatDuplicatePhraseMaxRepeat
+            if (maxRepeat > 0 && message.length >= 2) {
+                val whitelist = Settings.chatDuplicatePhraseWhitelist.toSet()
+                if (maxConsecutiveRepeat(message, whitelist) > maxRepeat) {
+                    player.sendLang("General-Too-Duplicate")
+                    return false
+                }
             }
         }
         if (!player.hasPermission("trchat.bypass.chatcd")) {
@@ -295,6 +315,24 @@ open class Channel(
         }
         if (Function.functions.any { !it.checkCooldown(player, message) }) {
             return false
+        }
+        // 消息发送频率检查
+        if (!player.hasPermission("trchat.bypass.highfrequency")) {
+            val max = Settings.chatHighFrequencyMaxPerPeriod
+            if (max > 0) {
+                val session = player.session
+                val period = Settings.chatHighFrequencyPeriod.get()?.takeIf { it > 0 } ?: 60000L
+                val now = System.currentTimeMillis()
+                if (session.totalPeriodStart == 0L || now - session.totalPeriodStart >= period) {
+                    session.totalPeriodStart = now
+                    session.totalCountInPeriod = 0
+                }
+                if (session.totalCountInPeriod >= max) {
+                    player.sendLang("General-Too-Frequent")
+                    return false
+                }
+                session.totalCountInPeriod++
+            }
         }
         player.updateCooldown(CooldownType.CHAT, Settings.chatCooldown.get())
         return true
@@ -347,4 +385,53 @@ open class Channel(
             }
         }
     }
+}
+
+// 检查重复的子字符串并统计
+private fun maxConsecutiveRepeat(message: String, whitelist: Set<String>): Int {
+    val n = message.length
+    if (n < 2) return 1
+    var max = 1
+    val checkWhitelist = whitelist.isNotEmpty()
+    var i = 0
+    while (i < n) {
+        val maxLen = (n - i) / 2
+        var len = 1
+        while (len <= maxLen) {
+            if (checkWhitelist && isWhitelistedUnit(message, i, len, whitelist)) {
+                len++
+                continue
+            }
+            var count = 1
+            var j = i + len
+            while (j + len <= n && message.regionMatches(j, message, j - len, len)) {
+                count++
+                j += len
+            }
+            if (count > max) max = count
+            len++
+        }
+        i++
+    }
+    return max
+}
+
+// 判断重复单元是否被白名单豁免
+private fun isWhitelistedUnit(message: String, start: Int, len: Int, whitelist: Set<String>): Boolean {
+    for (w in whitelist) {
+        val wl = w.length
+        if (wl == 0 || len < wl || len % wl != 0) continue
+        val repeat = len / wl
+        var ok = true
+        var k = 0
+        while (k < repeat) {
+            if (!message.regionMatches(start + k * wl, w, 0, wl)) {
+                ok = false
+                break
+            }
+            k++
+        }
+        if (ok) return true
+    }
+    return false
 }

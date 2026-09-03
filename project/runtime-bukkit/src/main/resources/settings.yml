@@ -36,7 +36,31 @@ Redis:
   timeout: 1000
 
 Chat:
-  Anti-Repeat: 0.85
+  Interception:
+    Anti-Repeat:
+      #内容相似度防刷屏
+      Similarity: 0.85
+      #每个周期内（下面的Period配置项）允许发送的相似消息最大条数，0表示任何时间完全禁止连续发送相似消息
+      Max-Per-Period: 0
+      #计数周期
+      Period: '1m'
+    Anti-High-frequency:
+      #每个周期内（下面的Period配置项）允许发送的消息最大条数，0表示无消息发送频率限制
+      Max-Per-Period: 0
+      #计数周期
+      Period: '1m'
+    Anti-Duplicate-Phrase:
+      #句内连续重复词组允许的最大次数，超过则拦截，0表示禁用此检测
+      #例如填2时，发送"加我微信加我微信"时放行, "加我微信加我微信加我微信"时拦截
+      Max-Repeat: 0
+      #词组白名单，其中的词组无论连续重复多少次都不拦截
+      Whitelist:
+        - '哈'
+        - '6'
+        - '?'
+        - '？'
+        - '!'
+        - '！'
   Cooldown: '2.0s'
   Length-Limit: 100
   Permission-Check:

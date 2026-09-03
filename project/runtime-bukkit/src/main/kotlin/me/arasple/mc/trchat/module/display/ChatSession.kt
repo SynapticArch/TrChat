@@ -26,6 +26,10 @@ class ChatSession(val player: Player) {
     var lastChannel: Channel? = null
     var lastPublicMessage = ""
     var lastPrivateMessage = ""
+    var similarCountInPeriod = 0
+    var similarPeriodStart = 0L
+    var totalCountInPeriod = 0
+    var totalPeriodStart = 0L
     var lastPrivateTo = ""
     var cancelChat = false
     @JvmField
