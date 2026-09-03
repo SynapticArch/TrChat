@@ -28,6 +28,7 @@ class ChatSession(val player: Player) {
     var lastPrivateMessage = ""
     var similarCountInPeriod = 0
     var similarPeriodStart = 0L
+    val similarPeriodMessages = mutableListOf<Pair<Long, String>>()
     var totalCountInPeriod = 0
     var totalPeriodStart = 0L
     var lastPrivateTo = ""

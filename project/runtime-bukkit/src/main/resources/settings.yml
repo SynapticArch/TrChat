@@ -44,6 +44,8 @@ Chat:
       Max-Per-Period: 0
       #计数周期
       Period: '1m'
+      #是否检测周期内所有消息的相似度: true 检测周期内所有消息(更严格); false 只检测相邻两条消息
+      Compare-All: false
     Anti-High-frequency:
       #每个周期内（下面的Period配置项）允许发送的消息最大条数，0表示无消息发送频率限制
       Max-Per-Period: 0
